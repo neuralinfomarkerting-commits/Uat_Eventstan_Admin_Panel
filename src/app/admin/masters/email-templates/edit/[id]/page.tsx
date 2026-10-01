@@ -2,12 +2,32 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Save, Bold, Italic, Underline, Link as LinkIcon, Image as ImageIcon, ListOrdered, List } from "lucide-react";
+import {
+  ArrowLeft,
+  Save,
+  Bold,
+  Italic,
+  Underline,
+  Link as LinkIcon,
+  Image as ImageIcon,
+  ListOrdered,
+  List,
+  Instagram,
+  Facebook,
+  Youtube,
+  Linkedin,
+  PartyPopper,
+} from "lucide-react";
 import Link from "next/link";
 import { adminApi } from "@/api/adminApi";
 import Button from "@/components/admin/Button";
 import Input from "@/components/admin/Input";
 import SearchableSelect from "@/components/admin/SearchableSelect";
+import {
+  bannerSubtitle,
+  emailBodyCss,
+  renderTemplateBody,
+} from "@/lib/emailTemplateUtils";
 import toast from "react-hot-toast";
 
 const emptyForm = {
@@ -18,6 +38,150 @@ const emptyForm = {
   status: "Active",
 };
 
+const BASIC_PLACEHOLDERS = ["user_name", "start_date", "end_date"];
+const BOOKING_PLACEHOLDERS = [
+  "name",
+  "order_id",
+  "status",
+  "booking_status",
+  "booked_on",
+  "event_date",
+  "total_packages",
+  "total_amount",
+  "package_name",
+  "start_time",
+  "end_time",
+  "guests",
+  "package_amount",
+  "payment_type",
+  "payment_percentage",
+  "amount_paid",
+  "remaining_amount",
+  "payment_status",
+  "booking_url",
+];
+
+const BOOKING_SAMPLE_BODY = `<h2>Booking Confirmation</h2>
+
+<p><strong>Dear {{name}},</strong></p>
+
+<p>
+Thank you for booking with EventStan. Your booking has been successfully confirmed.
+Your booking details are mentioned below.
+</p>
+
+<h3>Booking Details</h3>
+
+<table>
+  <tr>
+    <td><strong>Order ID</strong></td>
+    <td>{{order_id}}</td>
+    <td><strong>Booking Status</strong></td>
+    <td>{{status}}</td>
+  </tr>
+  <tr>
+    <td><strong>Booked On</strong></td>
+    <td>{{booked_on}}</td>
+    <td><strong>Event Date</strong></td>
+    <td>{{event_date}}</td>
+  </tr>
+  <tr>
+    <td><strong>Total Packages</strong></td>
+    <td>{{total_packages}}</td>
+    <td><strong>Total Amount</strong></td>
+    <td>AED {{total_amount}}</td>
+  </tr>
+</table>
+
+<h3>Package Details</h3>
+
+<table>
+  <thead>
+    <tr>
+      <th>Package</th>
+      <th>Event Date</th>
+      <th>Time</th>
+      <th>Guests</th>
+      <th>Amount</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>{{package_name}}</td>
+      <td>{{event_date}}</td>
+      <td>{{start_time}} – {{end_time}}</td>
+      <td>{{guests}}</td>
+      <td>AED {{package_amount}}</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Payment Details</h3>
+
+<table>
+  <tr>
+    <td><strong>Payment Type</strong></td>
+    <td>{{payment_type}}</td>
+    <td><strong>Payment Percentage</strong></td>
+    <td>{{payment_percentage}}%</td>
+  </tr>
+  <tr>
+    <td><strong>Total Amount</strong></td>
+    <td>AED {{total_amount}}</td>
+    <td><strong>Amount Paid</strong></td>
+    <td>AED {{amount_paid}}</td>
+  </tr>
+  <tr>
+    <td><strong>Remaining Amount</strong></td>
+    <td>AED {{remaining_amount}}</td>
+    <td><strong>Payment Status</strong></td>
+    <td>{{payment_status}}</td>
+  </tr>
+</table>
+
+<p>
+<strong>View your complete booking details from your EventStan account.</strong>
+</p>
+
+<p>
+<a href="{{booking_url}}">View Booking Details</a>
+</p>
+
+<p>
+If you have any questions, contact us at
+<strong>support@eventstan.com</strong>.
+</p>
+
+<p>
+Thank you for choosing EventStan!
+</p>
+
+<p>
+<strong>Regards,</strong><br>
+<strong>The EventStan Team</strong>
+</p>`;
+
+const TikTokIcon = ({ size = 16 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
+    <path d="M16.6 5.82A4.28 4.28 0 0 1 15.54 3h-3.09v12.4a2.59 2.59 0 0 1-2.59 2.5c-1.42 0-2.6-1.16-2.6-2.6 0-1.72 1.66-3.01 3.37-2.48V9.66c-3.45-.46-6.47 2.22-6.47 5.64 0 3.33 2.76 5.7 5.69 5.7 3.14 0 5.69-2.55 5.69-5.7V9.4a7.4 7.4 0 0 0 4.3 1.38V7.72s-1.88.09-3.24-1.9z" />
+  </svg>
+);
+
+const SocialIcons = ({ size = 32 }: { size?: number }) => (
+  <div className="flex items-center gap-2">
+    {[Instagram, Facebook, TikTokIcon, Youtube, Linkedin].map((Icon, i) => (
+      <a
+        key={i}
+        href="#"
+        style={{ width: size, height: size }}
+        className="flex items-center justify-center rounded-full bg-slate-700/60 text-white hover:bg-orange-500 transition"
+      >
+        <Icon size={size / 2} />
+      </a>
+    ))}
+  </div>
+);
+
 export default function EditEmailTemplatePage() {
   const router = useRouter();
   const params = useParams();
@@ -25,11 +189,6 @@ export default function EditEmailTemplatePage() {
   const [form, setForm] = useState(emptyForm);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [previewData, setPreviewData] = useState({
-    user_name: "John Doe",
-    start_date: "01-Nov-2025",
-    end_date: "05-Nov-2025",
-  });
 
   useEffect(() => {
     const load = async () => {
@@ -78,125 +237,123 @@ export default function EditEmailTemplatePage() {
     }
   };
 
-  const getPreviewHtml = () => {
-    let html = form.body;
-    // Replace placeholders
-    html = html.replace(/{user_name}/g, previewData.user_name);
-    html = html.replace(/{start_date}/g, previewData.start_date);
-    html = html.replace(/{end_date}/g, previewData.end_date);
-    html = html.replace(/\(user_name\)/g, previewData.user_name);
-    html = html.replace(/\(start_date\)/g, previewData.start_date);
-    html = html.replace(/\(end_date\)/g, previewData.end_date);
-    
-    // Convert line breaks to <br/> for HTML display
-    html = html.replace(/\n/g, '<br/>');
-    
-    return html;
-  };
-
-  const insertPlaceholder = (placeholder: string) => {
-    setForm({ ...form, body: form.body + `{${placeholder}}` });
+  const insertPlaceholder = (text: string) => {
+    setForm({ ...form, body: form.body + text });
   };
 
   const insertTag = (openTag: string, closeTag: string) => {
-    const textarea = document.querySelector('textarea');
+    const textarea = document.querySelector("textarea");
     if (textarea) {
       const start = textarea.selectionStart;
       const end = textarea.selectionEnd;
       const text = form.body;
       const selectedText = text.substring(start, end);
-      
+
       const wrappedText = `${openTag}${selectedText}${closeTag}`;
-      const newText = text.substring(0, start) + wrappedText + text.substring(end);
+      const newText =
+        text.substring(0, start) + wrappedText + text.substring(end);
       setForm({ ...form, body: newText });
-      
+
       setTimeout(() => {
         textarea.focus();
-        textarea.setSelectionRange(start + openTag.length, start + openTag.length + selectedText.length);
+        textarea.setSelectionRange(
+          start + openTag.length,
+          start + openTag.length + selectedText.length,
+        );
       }, 0);
     }
   };
 
   const insertLink = () => {
-    const url = prompt('Enter URL:');
+    const url = prompt("Enter URL:");
     if (url) {
-      const textarea = document.querySelector('textarea');
+      const textarea = document.querySelector("textarea");
       if (textarea) {
         const start = textarea.selectionStart;
         const end = textarea.selectionEnd;
         const text = form.body;
-        const selectedText = text.substring(start, end) || 'link';
-        
+        const selectedText = text.substring(start, end) || "link";
+
         const linkHtml = `<a href="${url}" target="_blank">${selectedText}</a>`;
-        const newText = text.substring(0, start) + linkHtml + text.substring(end);
+        const newText =
+          text.substring(0, start) + linkHtml + text.substring(end);
         setForm({ ...form, body: newText });
       }
     }
   };
 
   const insertImage = () => {
-    const url = prompt('Enter image URL:');
+    const url = prompt("Enter image URL:");
     if (url) {
       const imageHtml = `<img src="${url}" alt="Image" style="max-width: 100%; border-radius: 8px;" />`;
       setForm({ ...form, body: form.body + imageHtml });
     }
   };
 
-  const insertList = (type: 'ul' | 'ol') => {
-    const textarea = document.querySelector('textarea');
+  const insertList = (type: "ul" | "ol") => {
+    const textarea = document.querySelector("textarea");
     if (textarea) {
       const start = textarea.selectionStart;
       const end = textarea.selectionEnd;
       const text = form.body;
       const selectedText = text.substring(start, end);
-      
-      const items = selectedText.split('\n').filter(item => item.trim());
-      if (items.length === 0) {
-        const listHtml = type === 'ul' ? '<ul style="margin: 10px 0; padding-left: 20px;">\n  <li>Item 1</li>\n  <li>Item 2</li>\n</ul>' : '<ol style="margin: 10px 0; padding-left: 20px;">\n  <li>Item 1</li>\n  <li>Item 2</li>\n</ul>';
-        const newText = text.substring(0, start) + listHtml + text.substring(end);
-        setForm({ ...form, body: newText });
-      } else {
-        const listHtml = type === 'ul' 
-          ? '<ul style="margin: 10px 0; padding-left: 20px;">\n' + items.map(item => `  <li>${item}</li>`).join('\n') + '\n</ul>'
-          : '<ol style="margin: 10px 0; padding-left: 20px;">\n' + items.map(item => `  <li>${item}</li>`).join('\n') + '\n</ol>';
-        const newText = text.substring(0, start) + listHtml + text.substring(end);
-        setForm({ ...form, body: newText });
-      }
+      const style = 'style="margin: 10px 0; padding-left: 20px;"';
+
+      const items = selectedText.split("\n").filter((item) => item.trim());
+      const lis =
+        items.length === 0
+          ? "  <li>Item 1</li>\n  <li>Item 2</li>"
+          : items.map((item) => `  <li>${item}</li>`).join("\n");
+
+      const listHtml = `<${type} ${style}>\n${lis}\n</${type}>`;
+      const newText = text.substring(0, start) + listHtml + text.substring(end);
+      setForm({ ...form, body: newText });
     }
   };
 
   const setSample = () => {
     setForm({
       ...form,
-      subject: "Welcome to Eventstan! 🎉",
+      subject: "Welcome to Eventstan!",
       trigger: "welcome_email",
-      body: `Dear {user_name},
+      body: `<strong>Dear {user_name},</strong>
 
-Welcome to Eventstan! 🎉
+<strong>Welcome to Eventstan!</strong>
 
 Thank you for registering with us. Your account has been successfully created.
 
 Get started today and explore all the features we have to offer.
 
-Need help? Contact us at support@eventstan.com
+Need help? Contact us at <a href="mailto:hello@eventstan.com">hello@eventstan.com</a>
 
 Regards,
-The Eventstan Team`
+The Eventstan Team`,
+    });
+  };
+
+  const setBookingSample = () => {
+    setForm({
+      ...form,
+      subject: "Booking Confirmation",
+      trigger: "booking_confirmation",
+      body: BOOKING_SAMPLE_BODY,
     });
   };
 
   const clearForm = () => {
-    setForm({
-      ...emptyForm,
-      body: ""
-    });
+    setForm({ ...emptyForm, body: "" });
   };
 
-  if (loading) return <div className="flex h-64 items-center justify-center text-sm text-gray-500">Loading template...</div>;
+  if (loading)
+    return (
+      <div className="flex h-64 items-center justify-center text-sm text-gray-500">
+        Loading template...
+      </div>
+    );
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
-      {/* Header */}
+    <div className="max-w-6xl mx-auto space-y-6">
+      {/* Page Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <Link href="/admin/masters/email-templates">
@@ -204,7 +361,9 @@ The Eventstan Team`
               <ArrowLeft size={20} />
             </button>
           </Link>
-          <h1 className="text-2xl font-bold text-gray-900">Edit Email Template</h1>
+          <h1 className="text-2xl font-bold text-gray-900">
+            Edit Email Template
+          </h1>
         </div>
         <div className="text-orange-500 font-bold text-xl">Eventstan</div>
       </div>
@@ -217,9 +376,11 @@ The Eventstan Team`
             <label className="block text-sm font-medium text-gray-700 mb-1.5">
               Template Name
             </label>
-            <Input 
-              value={form.name} 
-              onChange={event => setForm({ ...form, name: event.target.value })} 
+            <Input
+              value={form.name}
+              onChange={(event) =>
+                setForm({ ...form, name: event.target.value })
+              }
               placeholder="e.g. Welcome Email"
               className="w-full"
             />
@@ -230,9 +391,11 @@ The Eventstan Team`
             <label className="block text-sm font-medium text-gray-700 mb-1.5">
               Template Key
             </label>
-            <Input 
-              value={form.trigger} 
-              onChange={event => setForm({ ...form, trigger: event.target.value })} 
+            <Input
+              value={form.trigger}
+              onChange={(event) =>
+                setForm({ ...form, trigger: event.target.value })
+              }
               placeholder="e.g. welcome_email"
               className="w-full"
             />
@@ -243,9 +406,11 @@ The Eventstan Team`
             <label className="block text-sm font-medium text-gray-700 mb-1.5">
               Subject
             </label>
-            <Input 
-              value={form.subject} 
-              onChange={event => setForm({ ...form, subject: event.target.value })} 
+            <Input
+              value={form.subject}
+              onChange={(event) =>
+                setForm({ ...form, subject: event.target.value })
+              }
               placeholder="Welcome to Eventstan!"
               className="w-full"
             />
@@ -257,9 +422,12 @@ The Eventstan Team`
               Status
             </label>
             <SearchableSelect
-              options={[{ id: "Active", label: "Active" }, { id: "Inactive", label: "Inactive" }]}
+              options={[
+                { id: "Active", label: "Active" },
+                { id: "Inactive", label: "Inactive" },
+              ]}
               value={form.status}
-              onChange={id => setForm({ ...form, status: String(id) })}
+              onChange={(id) => setForm({ ...form, status: String(id) })}
               searchPlaceholder="Search..."
             />
           </div>
@@ -269,12 +437,12 @@ The Eventstan Team`
             <label className="block text-sm font-medium text-gray-700 mb-1.5">
               Body
             </label>
-            
+
             {/* Toolbar */}
             <div className="flex gap-1 mb-2 p-1.5 bg-gray-50 rounded-lg border border-gray-200 w-fit">
               <button
                 type="button"
-                onClick={() => insertTag('<strong>', '</strong>')}
+                onClick={() => insertTag("<strong>", "</strong>")}
                 className="p-1.5 hover:bg-gray-200 rounded transition"
                 title="Bold"
               >
@@ -282,7 +450,7 @@ The Eventstan Team`
               </button>
               <button
                 type="button"
-                onClick={() => insertTag('<em>', '</em>')}
+                onClick={() => insertTag("<em>", "</em>")}
                 className="p-1.5 hover:bg-gray-200 rounded transition"
                 title="Italic"
               >
@@ -290,7 +458,7 @@ The Eventstan Team`
               </button>
               <button
                 type="button"
-                onClick={() => insertTag('<u>', '</u>')}
+                onClick={() => insertTag("<u>", "</u>")}
                 className="p-1.5 hover:bg-gray-200 rounded transition"
                 title="Underline"
               >
@@ -299,7 +467,7 @@ The Eventstan Team`
               <div className="w-px h-5 bg-gray-300 mx-1 self-center" />
               <button
                 type="button"
-                onClick={() => insertList('ul')}
+                onClick={() => insertList("ul")}
                 className="p-1.5 hover:bg-gray-200 rounded transition"
                 title="Bullet List"
               >
@@ -307,7 +475,7 @@ The Eventstan Team`
               </button>
               <button
                 type="button"
-                onClick={() => insertList('ol')}
+                onClick={() => insertList("ol")}
                 className="p-1.5 hover:bg-gray-200 rounded transition"
                 title="Numbered List"
               >
@@ -333,10 +501,12 @@ The Eventstan Team`
             </div>
 
             {/* Body Textarea */}
-            <textarea 
-              value={form.body} 
-              onChange={event => setForm({ ...form, body: event.target.value })} 
-              rows={10} 
+            <textarea
+              value={form.body}
+              onChange={(event) =>
+                setForm({ ...form, body: event.target.value })
+              }
+              rows={14}
               className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-orange-500 font-mono"
               placeholder="Hello {user_name}, Welcome to Eventstan!"
             />
@@ -348,38 +518,50 @@ The Eventstan Team`
               Placeholders
             </label>
             <div className="flex gap-2 flex-wrap">
-              <button
-                type="button"
-                onClick={() => insertPlaceholder('user_name')}
-                className="px-3 py-1.5 bg-gray-100 border border-gray-200 rounded-lg text-sm text-gray-700 hover:border-orange-500 hover:bg-orange-50 transition"
-              >
-                {'{user_name}'}
-              </button>
-              <button
-                type="button"
-                onClick={() => insertPlaceholder('start_date')}
-                className="px-3 py-1.5 bg-gray-100 border border-gray-200 rounded-lg text-sm text-gray-700 hover:border-orange-500 hover:bg-orange-50 transition"
-              >
-                {'{start_date}'}
-              </button>
-              <button
-                type="button"
-                onClick={() => insertPlaceholder('end_date')}
-                className="px-3 py-1.5 bg-gray-100 border border-gray-200 rounded-lg text-sm text-gray-700 hover:border-orange-500 hover:bg-orange-50 transition"
-              >
-                {'{end_date}'}
-              </button>
+              {BASIC_PLACEHOLDERS.map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => insertPlaceholder(`{${p}}`)}
+                  className="px-3 py-1.5 bg-gray-100 border border-gray-200 rounded-lg text-sm text-gray-700 hover:border-orange-500 hover:bg-orange-50 transition"
+                >
+                  {`{${p}}`}
+                </button>
+              ))}
+            </div>
+
+            <p className="text-xs text-gray-500 mt-3 mb-1.5">
+              Booking placeholders
+            </p>
+            <div className="flex gap-2 flex-wrap">
+              {BOOKING_PLACEHOLDERS.map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => insertPlaceholder(`{{${p}}}`)}
+                  className="px-2.5 py-1 bg-gray-100 border border-gray-200 rounded-lg text-xs text-gray-700 hover:border-orange-500 hover:bg-orange-50 transition"
+                >
+                  {`{{${p}}}`}
+                </button>
+              ))}
             </div>
           </div>
 
           {/* Sample and Clear Buttons */}
-          <div className="flex gap-3 pt-2">
+          <div className="flex gap-3 pt-2 flex-wrap">
             <button
               type="button"
               onClick={setSample}
               className="px-4 py-2 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 transition"
             >
               Sample
+            </button>
+            <button
+              type="button"
+              onClick={setBookingSample}
+              className="px-4 py-2 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 transition"
+            >
+              Booking Sample
             </button>
             <button
               type="button"
@@ -392,8 +574,8 @@ The Eventstan Team`
 
           {/* Save Button */}
           <div className="pt-4 border-t">
-            <Button 
-              type="submit" 
+            <Button
+              type="submit"
               onClick={save}
               disabled={saving}
               className="bg-orange-500 hover:bg-orange-600 px-6"
@@ -406,41 +588,66 @@ The Eventstan Team`
 
         {/* Right Column - Live Preview */}
         <div>
-          <h2 className="text-lg font-semibold text-gray-900 mb-3">Live Email Preview</h2>
-          
-          {/* Email Card */}
+          <h2 className="text-lg font-semibold text-gray-900 mb-3">
+            Live Email Preview
+          </h2>
+
+          {/* Scoped CSS for the email body (tables, headings, links) */}
+          <style>{emailBodyCss(".email-body")}</style>
+
           <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-            {/* Card Header */}
-            <div className="px-5 py-3 bg-gradient-to-r from-orange-500 to-orange-600 flex items-center justify-between">
-              <h3 className="font-semibold text-white">
-                {form.subject || "Welcome to Eventstan! 🎉"}
-              </h3>
-              <span className="text-white font-medium text-sm opacity-90">Eventstan</span>
-            </div>
-            
-            {/* Card Body */}
-            <div className="p-5">
-              <div 
-                className="text-gray-700 leading-relaxed"
-                dangerouslySetInnerHTML={{ __html: getPreviewHtml() }}
-              />
+            {/* ===== HEADER ===== */}
+            <div className="relative overflow-hidden bg-[#111f33] px-6 py-5 flex items-center justify-between">
+              <div className="absolute -top-10 -right-10 w-24 h-24 rounded-full bg-orange-500" />
+
+              <div className="text-2xl tracking-tight text-white">
+                Event
+                <span className="font-extrabold text-orange-500">Stan</span>
+              </div>
+
+              <div className="relative z-10 mr-6">
+                <SocialIcons size={28} />
+              </div>
             </div>
 
-            {/* Card Footer */}
-            <div className="px-5 py-3 bg-gray-50 border-t border-gray-100">
-              <div className="text-center text-xs text-gray-500">
-                <p>© {new Date().getFullYear()} Eventstan. All rights reserved.</p>
-                <p className="mt-1">
-                  <a href="#" className="text-orange-500 hover:underline">Unsubscribe</a> | 
-                  <a href="#" className="text-orange-500 hover:underline ml-2">Privacy Policy</a>
+            {/* ===== SUBJECT BANNER ===== */}
+            <div className="mx-4 mt-4 rounded-xl bg-gradient-to-r from-orange-50 to-orange-100/60 px-5 py-4 flex items-center gap-4">
+              <PartyPopper size={40} className="text-orange-500 shrink-0" />
+              <div className="border-l-2 border-orange-500 pl-4">
+                <h3 className="text-lg font-bold text-[#111f33] leading-tight">
+                  {form.subject || "Welcome to Eventstan!"}
+                </h3>
+                <p className="text-sm text-slate-500">
+                  {bannerSubtitle(form.trigger)}
                 </p>
               </div>
             </div>
-          </div>
 
-          {/* Address */}
-          <div className="mt-4 text-center text-xs text-gray-400">
-            Headquarter Address: 144-A IInd Floor, Vikas Nagar, Kanpur, Uttar Pradesh – 208024
+            {/* ===== BODY ===== */}
+            <div className="px-6 py-5 overflow-x-auto">
+              <div
+                className="email-body"
+                dangerouslySetInnerHTML={{
+                  __html: renderTemplateBody(form.body),
+                }}
+              />
+            </div>
+
+            {/* ===== FOOTER ===== */}
+            <div className="relative overflow-hidden bg-[#111f33] px-6 py-4 text-center">
+              <div className="absolute -bottom-10 -left-10 w-32 h-32 rounded-full bg-slate-700/50" />
+              <div className="absolute -bottom-8 -right-8 w-24 h-24 bg-orange-500 rotate-45" />
+
+              <div className="relative z-10 flex flex-col items-center">
+                <div className="w-4/5 h-px bg-slate-600 my-2" />
+
+                <p className="text-xs text-slate-300">
+                  © {new Date().getFullYear()} Eventstan. All rights reserved.
+                </p>
+
+                <div className="w-10 h-0.5 bg-orange-500 my-3" />
+              </div>
+            </div>
           </div>
         </div>
       </div>
