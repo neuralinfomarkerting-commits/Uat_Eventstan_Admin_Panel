@@ -9,6 +9,17 @@ import Modal from "@/components/admin/Modal";
 import Pagination from "@/components/admin/Pagination";
 import SearchableSelect from "@/components/admin/SearchableSelect";
 import { Column } from "@/lib/types";
+const isItemAccepted = (
+  booking: { vendorAcceptedAt?: string | null; status?: string },
+  item: Record<string, any>,
+): boolean => {
+  const own = item.vendorStatus ?? item.status;
+  if (typeof own === "string") {
+    return ["ACCEPTED", "VENDOR_ACCEPTED", "CONFIRMED"].includes(own.toUpperCase());
+  }
+  if (typeof item.vendorAcceptedAt !== "undefined") return Boolean(item.vendorAcceptedAt);
+  return Boolean(booking.vendorAcceptedAt) || booking.status === "VENDOR_ACCEPTED";
+};
 
 interface Booking {
   id: string;
@@ -239,12 +250,12 @@ export default function BookingManagementPage() {
     {
       key: "items",
       label: "Package",
-      render: (value: Booking["items"]) => {
+      render: (value: Booking["items"], row: Booking) => {
         if (!value || value.length === 0) return "-";
         return (
           <div className="flex min-w-[260px] max-w-[340px] flex-col items-start gap-2">
             {value.map((item, index) => {
-              const accepted = Boolean(item.vendorId);
+              const accepted = isItemAccepted(row, item);
               return (
                 <div key={item.id} className="w-full">
                   <span className="inline-flex max-w-full items-start gap-1 whitespace-normal break-words rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-xs leading-snug text-gray-700">
@@ -515,7 +526,7 @@ export default function BookingManagementPage() {
                 const vendorName = vendor
                   ? vendor.companyName || vendor.contactPerson
                   : "Unknown Vendor";
-                const accepted = Boolean(item.vendorId);
+                const accepted = isItemAccepted(selected, item);
                 const isEven = index % 2 === 0;
                 return (
                   <div

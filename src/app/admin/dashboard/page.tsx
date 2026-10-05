@@ -28,6 +28,18 @@ interface DashboardData {
   growth: number;
 }
 
+const isItemAccepted = (
+  booking: { vendorAcceptedAt?: string | null; status?: string },
+  item: Record<string, any>,
+): boolean => {
+  const own = item.vendorStatus ?? item.status;
+  if (typeof own === "string") {
+    return ["ACCEPTED", "VENDOR_ACCEPTED", "CONFIRMED"].includes(own.toUpperCase());
+  }
+  if (typeof item.vendorAcceptedAt !== "undefined") return Boolean(item.vendorAcceptedAt);
+  return Boolean(booking.vendorAcceptedAt) || booking.status === "VENDOR_ACCEPTED";
+};
+
 interface Booking {
   id: string;
   orderId: string;
@@ -259,7 +271,7 @@ export default function DashboardPage() {
         return (
           <div className="flex min-w-[220px] max-w-[300px] flex-col items-start gap-2">
             {row.items.map((item, idx) => {
-              const accepted = Boolean(item.vendorId);
+              const accepted = isItemAccepted(row, item);
               return (
                 <div key={item.id} className="w-full">
                   <span className="inline-flex max-w-full items-start gap-1 whitespace-normal break-words rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-xs leading-snug text-gray-700">
@@ -547,7 +559,7 @@ export default function DashboardPage() {
                 const vendorName = vendor
                   ? vendor.companyName || vendor.contactPerson
                   : "Unknown Vendor";
-                const accepted = Boolean(item.vendorId);
+                const accepted = isItemAccepted(selected, item);
                 const isEven = index % 2 === 0;
                 return (
                   <div
