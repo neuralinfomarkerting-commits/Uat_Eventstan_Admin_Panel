@@ -11,12 +11,9 @@ import {
   FileText,
   History,
   Loader2,
-  MapPin,
   MessageSquare,
   Package,
-  Tag,
   User,
-  Users,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { adminApi } from "@/api/adminApi";
@@ -82,10 +79,6 @@ type Vendor = {
   vendorProfileImage?: string | null;
   imageUrl?: string | null;
 };
-
-const CUSTOMER_API_BASE =
-  process.env.NEXT_PUBLIC_CUSTOMER_API_URL ||
-  "https://uatcustomer.eventstan.com/api/proxy";
 
 const CARD_SHADOW =
   "shadow-[0_1px_3px_rgba(16,24,40,0.08),0_4px_12px_-2px_rgba(16,24,40,0.06)]";
@@ -159,19 +152,29 @@ const getGuests = (b: Booking): string => {
   return v === undefined || v === null || v === "" ? "-" : String(v);
 };
 
-const formatPhone = (phone?: string, code?: string) => {
-  if (!phone) return "-";
-  return phone.startsWith("+") ? phone : `${code || ""} ${phone}`.trim();
+const DEFAULT_COUNTRY_CODE = "+971"; // UAE, used when no country code is available
+
+const formatPhone = (phone?: string | null, code?: string | null) => {
+  const raw = String(phone ?? "").trim();
+  if (!raw) return "-";
+  if (raw.startsWith("+")) return raw;
+  const cc = String(code ?? "").trim() || DEFAULT_COUNTRY_CODE;
+  const prefix = cc.startsWith("+") ? cc : `+${cc}`;
+  return `${prefix} ${raw}`;
 };
 
 const escapeHtml = (v: unknown) =>
   String(v ?? "").replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
+// Labels that the customer app writes into `notes` ("Label: value - Label: value - ...").
+// Anything that is NOT one of these is treated as the customer's own message.
 const ADDRESS_LABELS = [
+  "Phone", // contact number added by the book-now flow
   "Address Line 1",
   "Address Line 2",
   "City",
   "State",
+  "Country",
   "PO Box",
   "Landmark",
 ];
@@ -190,6 +193,33 @@ const parseNotes = (notes?: string) => {
     }
   });
   return { fields, message: message.trim() };
+};
+
+// One complete address string, e.g.
+// "Apartment 1203, Marina Tower, Al Marsa Street, Dubai Marina, Near DMCC Metro Station,
+//  Dubai, PO Box 554411, United Arab Emirates"
+const buildFullAddress = (
+  fields: Record<string, string>,
+  fallback?: string,
+): string => {
+  const parts = [
+    fields["Address Line 1"],
+    fields["Address Line 2"],
+    fields["Landmark"] &&
+      (/^near\b/i.test(fields["Landmark"])
+        ? fields["Landmark"]
+        : `Near ${fields["Landmark"]}`),
+    fields["City"],
+    fields["State"],
+    fields["PO Box"] && `PO Box ${fields["PO Box"]}`,
+    fields["Country"],
+  ].filter((p): p is string => Boolean(p));
+
+  const unique = Array.from(
+    new Map(parts.map((p) => [p.toLowerCase(), p] as const)).values(),
+  );
+
+  return unique.join(", ") || fallback || "-";
 };
 
 const initials = (name?: string) =>
@@ -282,34 +312,6 @@ const getCustomerImage = (c?: Record<string, any> | null): string | null => {
     c.image ||
     null
   );
-};
-
-const getAuthToken = (): string | null => {
-  if (typeof window === "undefined") return null;
-  return (
-    localStorage.getItem("token") ||
-    localStorage.getItem("authToken") ||
-    localStorage.getItem("accessToken") ||
-    sessionStorage.getItem("token") ||
-    sessionStorage.getItem("authToken") ||
-    sessionStorage.getItem("accessToken") ||
-    null
-  );
-};
-
-const fetchCustomerById = async (customerId: string) => {
-  const headers: Record<string, string> = {
-    accept: "application/json",
-  };
-  const token = getAuthToken();
-  if (token) headers.authorization = `Bearer ${token}`;
-
-  const res = await fetch(`${CUSTOMER_API_BASE}/customers/${customerId}`, {
-    headers,
-    credentials: "include",
-  });
-  if (!res.ok) throw new Error(`Failed to load customer (${res.status})`);
-  return res.json();
 };
 
 const Pill = ({ text, cls }: { text: string; cls: string }) => (
@@ -488,23 +490,15 @@ export default function BookingViewPage() {
       });
       setPackageMap(pMap);
 
+      // Only use the admin API if it exposes a customer lookup. No direct call to
+      // the customer-site proxy (it returns 404 for this id).
       const custId = b.customerId || b.customer?.id;
-      if (custId) {
+      if (custId && api?.customers?.get) {
         try {
-          let cd: any = null;
-          if (api?.customers?.get) {
-            cd = await api.customers.get(custId);
-          } else {
-            cd = await fetchCustomerById(custId);
-          }
+          const cd = await api.customers.get(custId);
           setCustomerDetail(cd || null);
         } catch {
-          try {
-            const cd = await fetchCustomerById(custId);
-            setCustomerDetail(cd || null);
-          } catch {
-            setCustomerDetail(null);
-          }
+          setCustomerDetail(null);
         }
       } else {
         setCustomerDetail(null);
@@ -611,7 +605,11 @@ export default function BookingViewPage() {
     lastPayment?.id;
   const paidAt =
     lastPayment?.succeededAt ?? lastPayment?.paidAt ?? lastPayment?.createdAt;
+
+  // `addr.fields` = address parts found in notes, `addr.message` = customer's own text.
   const addr = parseNotes(booking.notes);
+  // Full address, shown only in "Event Address".
+  const fullAddress = buildFullAddress(addr.fields, booking.eventAddress);
 
   const timeline = [
     {
@@ -700,7 +698,7 @@ export default function BookingViewPage() {
       <h1>EventStan</h1><p>Invoice</p>
       <div class="meta"><div><b>Order ID:</b> ${escapeHtml(b.orderId)}<br/>
       <b>Booked on:</b> ${escapeHtml(formatDate(b.createdAt))}</div>
-      <div><b>${escapeHtml(b.customer?.name)}</b><br/>${escapeHtml(b.customer?.email)}<br/>${escapeHtml(b.eventAddress)}</div></div>
+      <div><b>${escapeHtml(b.customer?.name)}</b><br/>${escapeHtml(b.customer?.email)}<br/>${escapeHtml(fullAddress)}</div></div>
       <table><thead><tr><th>#</th><th>Package</th><th>Event Date</th><th style="text-align:right">Qty</th><th style="text-align:right">Amount</th></tr></thead>
       <tbody>${rowsHtml}</tbody></table>
       <div class="tot"><div><b>Total:</b> ${escapeHtml(money(total))}</div>
@@ -1094,20 +1092,16 @@ export default function BookingViewPage() {
                   {customer.name || "-"}
                 </p>
                 <p className="text-gray-500">{customer.email || "-"}</p>
-                <p className="text-gray-700">{customer.phone || "-"}</p>
+                <p className="text-gray-700">
+                  {formatPhone(
+                    customer.mobile ?? customer.phone ?? addr.fields["Phone"],
+                    customer.countryCode ??
+                      customer.phoneCountryCode ??
+                      customer.mobileCountryCode,
+                  )}
+                </p>
               </div>
             </div>
-            <Row label="Country">{customer.country || "UAE"}</Row>
-            <Row label="State">{addr.fields["State"] || "-"}</Row>
-            <Row label="City">{addr.fields["City"] || "-"}</Row>
-            <Row label="Address Line 1">
-              {addr.fields["Address Line 1"] || booking.eventAddress || "-"}
-            </Row>
-            <Row label="Address Line 2">
-              {addr.fields["Address Line 2"] || "-"}
-            </Row>
-            <Row label="Landmark">{addr.fields["Landmark"] || "-"}</Row>
-            <Row label="PO Box">{addr.fields["PO Box"] || "-"}</Row>
             <div className="mt-3 border-t border-gray-100 pt-3">
               <p className="mb-2 flex items-center gap-2 text-sm font-semibold text-gray-900">
                 <span className="text-orange-500">
@@ -1133,47 +1127,15 @@ export default function BookingViewPage() {
             </div>
           </Card>
           <Card title="Event Details" icon={<CalendarDays size={16} />}>
-            <div className="grid gap-4 text-sm sm:grid-cols-2">
-              <div className="space-y-4">
-                <div>
-                  <p className="flex items-center gap-2 text-gray-500">
-                    <CalendarDays size={14} /> Event Date & Time
-                  </p>
-                  <p className="mt-1 font-medium text-gray-900">
-                    {formatDate(firstItem.eventDate)}
-                  </p>
-                  {eventTime && (
-                    <p className="text-xs text-gray-500">{eventTime}</p>
-                  )}
-                </div>
-                <div>
-                  <p className="flex items-center gap-2 text-gray-500">
-                    <Users size={14} /> Guest Count
-                  </p>
-                  <p className="mt-1 font-medium text-gray-900">
-                    {getGuests(booking)}
-                  </p>
-                </div>
-              </div>
-              <div className="space-y-4 sm:border-l sm:border-gray-100 sm:pl-4">
-                <div>
-                  <p className="flex items-center gap-2 text-gray-500">
-                    <MapPin size={14} /> Event Address
-                  </p>
-                  <p className="mt-1 font-medium text-gray-900">
-                    {booking.eventAddress || "-"}
-                  </p>
-                </div>
-                <div>
-                  <p className="flex items-center gap-2 text-gray-500">
-                    <Tag size={14} /> Event Type
-                  </p>
-                  <p className="mt-1 font-medium text-gray-900">
-                    {getEventType(booking)}
-                  </p>
-                </div>
-              </div>
-            </div>
+            <Row label="Event Date">{formatDate(firstItem.eventDate)}</Row>
+            <Row label="Event Time">{eventTime || "-"}</Row>
+            <Row label="Guest Count">{getGuests(booking)}</Row>
+            <Row label="Event Type">{getEventType(booking)}</Row>
+            <Row label="Event Address">
+              <span className="block max-w-[260px] break-words">
+                {fullAddress}
+              </span>
+            </Row>
           </Card>
           <Card title="Booking Timeline" icon={<History size={16} />}>
             <ol className="relative space-y-5 border-l border-gray-200 pl-5">
